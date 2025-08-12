@@ -1,0 +1,35 @@
+name: Graph API Smoke (Client Secret)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  call-graph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure jq is available
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+          fi
+
+      - name: Get token (client credentials)
+        id: tok
+        run: |
+          TOKEN=$(curl -s -X POST "https://login.microsoftonline.com/${{ secrets.TENANT_ID }}/oauth2/v2.0/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.CLIENT_ID }}&client_secret=${{ secrets.CLIENT_SECRET }}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&grant_type=client_credentials" \
+            | jq -r .access_token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Token fetch failed"; exit 1
+          fi
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: GET sample - list a few groups
+        run: |
+          curl -sS -H "Authorization: Bearer ${{ steps.tok.outputs.token }}" \
+               "https://graph.microsoft.com/v1.0/groups?\$top=5" | jq .
