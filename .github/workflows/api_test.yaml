@@ -33,3 +33,28 @@ jobs:
         run: |
           curl -sS -H "Authorization: Bearer ${{ steps.tok.outputs.token }}" \
                "https://graph.microsoft.com/v1.0/groups?\$top=5" | jq .
+
+      - name: GET all users (paged)
+        run: |
+          NEXT="https://graph.microsoft.com/v1.0/users?\$select=id,displayName,userPrincipalName&\$top=999"
+          : > users.ndjson
+          while [ -n "$NEXT" ]; do
+            RESP=$(curl -sS -H "Authorization: Bearer ${{ steps.tok.outputs.token }}" "$NEXT")
+            echo "$RESP" | jq -c '.value[]' >> users.ndjson
+            NEXT=$(echo "$RESP" | jq -r '."@odata.nextLink" // empty')
+          done
+          jq -s '{value: .}' users.ndjson > users.json
+          echo "Total users: $(wc -l < users.ndjson))"
+          head -n 5 users.ndjson | jq .
+
+      - name: Upload full users list
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-users
+          path: users.json
+
+      - name: Quick user count (sanity)
+        run: |
+          curl -sS -H "Authorization: Bearer ${{ steps.tok.outputs.token }}" \
+               -H "ConsistencyLevel: eventual" \
+               "https://graph.microsoft.com/v1.0/users?\$count=true&\$top=1" | jq '."@odata.count"'
